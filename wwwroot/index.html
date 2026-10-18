@@ -1,9 +1,9 @@
 ﻿<!doctype html>
-<html lang="tr">
+<html lang="en">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>API Sağlık</title>
+    <title>API Health</title>
     <style>
         body {
             margin: 0;
@@ -161,19 +161,19 @@
 </head>
 <body>
     <main>
-        <h1>API Sağlık</h1>
+        <h1>API Health</h1>
 
         <form id="addForm" class="add-form">
             <input id="urlInput"
                    type="url"
-                   placeholder="https://ornek.com/health"
-                   aria-label="İzlenecek URL"
+                   placeholder="https://example.com/health"
+                   aria-label="URL to monitor"
                    required>
-            <button id="addButton" type="submit">Ekle</button>
+            <button id="addButton" type="submit">Add</button>
         </form>
         <p id="formMessage" class="message"></p>
 
-        <p id="updated">Yükleniyor…</p>
+        <p id="updated">Loading…</p>
         <div id="list"></div>
     </main>
 
@@ -183,7 +183,7 @@
       const data = await response.json();
 
       document.getElementById("updated").textContent =
-        "Son kontrol: " + new Date(data.updatedAt).toLocaleString("tr-TR");
+        "Last check: " + new Date(data.updatedAt).toLocaleString("en-US");
 
       document.getElementById("list").innerHTML = data.results.map(result => {
         let tone = "idle";
@@ -209,7 +209,7 @@
               <button class="delete"
                       type="button"
                       data-url="${encodeURIComponent(result.url)}">
-                Sil
+                Delete
               </button>
             </div>
           </div>`;
@@ -225,7 +225,7 @@
       const url = input.value.trim();
 
       button.disabled = true;
-      button.textContent = "Ekleniyor…";
+      button.textContent = "Adding…";
       message.textContent = "";
       message.className = "message";
 
@@ -238,21 +238,21 @@
 
         if (!response.ok) {
           const data = await response.json().catch(() => ({}));
-          message.textContent = data.message || "URL eklenemedi.";
+          message.textContent = data.message || "Could not add URL.";
           message.className = "message error-text";
           return;
         }
 
         input.value = "";
-        message.textContent = "Eklendi; en geç 10 saniye içinde kontrol edilecek.";
+        message.textContent = "Added; it will be checked within 10 seconds.";
         message.className = "message success";
         await refresh();
       } catch {
-        message.textContent = "Sunucuya ulaşılamadı.";
+        message.textContent = "Could not reach the server.";
         message.className = "message error-text";
       } finally {
         button.disabled = false;
-        button.textContent = "Ekle";
+        button.textContent = "Add";
       }
     });
 
@@ -265,7 +265,7 @@
 
       const url = decodeURIComponent(button.dataset.url);
 
-      if (!confirm(`${url} adresi silinsin mi?`)) {
+      if (!confirm(`Delete ${url}?`)) {
         return;
       }
 
@@ -279,16 +279,16 @@
 
         if (!response.ok) {
           const data = await response.json().catch(() => ({}));
-          message.textContent = data.message || "URL silinemedi.";
+          message.textContent = data.message || "Could not delete URL.";
           message.className = "message error-text";
           return;
         }
 
-        message.textContent = "Silindi.";
+        message.textContent = "Deleted.";
         message.className = "message success";
         await refresh();
       } catch {
-        message.textContent = "Sunucuya ulaşılamadı.";
+        message.textContent = "Could not reach the server.";
         message.className = "message error-text";
       } finally {
         button.disabled = false;

@@ -47,7 +47,7 @@ app.MapPost("/api/urls", (AddUrlRequest request) =>
     {
         return Results.BadRequest(new
         {
-            message = "Geçerli bir http/https adresi girin."
+            message = "Enter a valid HTTP or HTTPS URL."
         });
     }
 
@@ -58,7 +58,7 @@ app.MapPost("/api/urls", (AddUrlRequest request) =>
         {
             return Results.Conflict(new
             {
-                message = "Bu adres zaten ekli."
+                message = "This URL is already being monitored."
             });
         }
 
@@ -75,7 +75,7 @@ app.MapDelete("/api/urls", (string url) =>
     {
         return Results.BadRequest(new
         {
-            message = "Geçerli bir http/https adresi girin."
+            message = "Enter a valid HTTP or HTTPS URL."
         });
     }
 
@@ -88,7 +88,7 @@ app.MapDelete("/api/urls", (string url) =>
         {
             return Results.NotFound(new
             {
-                message = "Bu adres listede yok."
+                message = "This URL is not in the list."
             });
         }
 
@@ -145,7 +145,7 @@ _ = Task.Run(async () =>
     }
     catch (OperationCanceledException)
     {
-        // Uygulama kapanırken normal.
+        // Normal during application shutdown.
     }
 });
 
