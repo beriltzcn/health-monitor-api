@@ -66,16 +66,95 @@
             color: #fca5a5;
             font-size: 14px;
         }
+
+        .add-form {
+            display: flex;
+            gap: 10px;
+            margin: 20px 0 4px;
+        }
+
+            .add-form input {
+                flex: 1;
+                min-width: 0;
+                padding: 12px 14px;
+                border: 1px solid #334155;
+                border-radius: 8px;
+                background: #1e293b;
+                color: #e2e8f0;
+                font: inherit;
+            }
+
+                .add-form input:focus {
+                    outline: 2px solid #3b82f6;
+                    outline-offset: 1px;
+                }
+
+            .add-form button {
+                padding: 12px 18px;
+                border: 0;
+                border-radius: 8px;
+                background: #3b82f6;
+                color: #ffffff;
+                font: inherit;
+                font-weight: 600;
+                cursor: pointer;
+            }
+
+                .add-form button:disabled {
+                    opacity: 0.6;
+                    cursor: wait;
+                }
+
+        .message {
+            min-height: 20px;
+            margin: 6px 0 20px;
+            color: #94a3b8;
+            font-size: 14px;
+        }
+
+            .message.success {
+                color: #86efac;
+            }
+
+            .message.error-text {
+                color: #fca5a5;
+            }
+
+        @media (max-width: 600px) {
+            body {
+                padding: 20px;
+            }
+
+            .add-form {
+                flex-direction: column;
+            }
+
+                .add-form button {
+                    width: 100%;
+                }
+        }
     </style>
 </head>
 <body>
     <main>
         <h1>API Sağlık</h1>
+
+        <form id="addForm" class="add-form">
+            <input id="urlInput"
+                   type="url"
+                   placeholder="https://ornek.com/health"
+                   aria-label="İzlenecek URL"
+                   required>
+            <button id="addButton" type="submit">Ekle</button>
+        </form>
+        <p id="formMessage" class="message"></p>
+
         <p id="updated">Yükleniyor…</p>
         <div id="list"></div>
     </main>
 
-    <script>async function refresh() {
+    <script>
+    async function refresh() {
       const response = await fetch("/status");
       const data = await response.json();
 
@@ -108,7 +187,48 @@
       }).join("");
     }
 
+    document.getElementById("addForm").addEventListener("submit", async event => {
+      event.preventDefault();
+
+      const input = document.getElementById("urlInput");
+      const button = document.getElementById("addButton");
+      const message = document.getElementById("formMessage");
+      const url = input.value.trim();
+
+      button.disabled = true;
+      button.textContent = "Ekleniyor…";
+      message.textContent = "";
+      message.className = "message";
+
+      try {
+        const response = await fetch("/api/urls", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url })
+        });
+
+        if (!response.ok) {
+          const data = await response.json().catch(() => ({}));
+          message.textContent = data.message || "URL eklenemedi.";
+          message.className = "message error-text";
+          return;
+        }
+
+        input.value = "";
+        message.textContent = "Eklendi; en geç 10 saniye içinde kontrol edilecek.";
+        message.className = "message success";
+        await refresh();
+      } catch {
+        message.textContent = "Sunucuya ulaşılamadı.";
+        message.className = "message error-text";
+      } finally {
+        button.disabled = false;
+        button.textContent = "Ekle";
+      }
+    });
+
     refresh();
-    setInterval(refresh, 5000);</script>
+    setInterval(refresh, 5000);
+    </script>
 </body>
 </html>
