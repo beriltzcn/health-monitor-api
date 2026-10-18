@@ -1,0 +1,114 @@
+﻿<!doctype html>
+<html lang="tr">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>API Sağlık</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 32px;
+            background: #0f172a;
+            color: #e2e8f0;
+            font-family: system-ui, sans-serif;
+        }
+
+        main {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            margin-top: 0;
+        }
+
+        #updated {
+            margin-bottom: 24px;
+            color: #94a3b8;
+        }
+
+        .row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 16px;
+            margin-bottom: 10px;
+            padding: 14px 16px;
+            border-left: 4px solid #64748b;
+            border-radius: 8px;
+            background: #1e293b;
+        }
+
+            .row.up {
+                border-color: #22c55e;
+            }
+
+            .row.warn {
+                border-color: #f59e0b;
+            }
+
+            .row.down {
+                border-color: #ef4444;
+            }
+
+        .url {
+            overflow-wrap: anywhere;
+        }
+
+        .meta {
+            color: #cbd5e1;
+            text-align: right;
+            white-space: nowrap;
+        }
+
+        .error {
+            margin-top: 4px;
+            color: #fca5a5;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <main>
+        <h1>API Sağlık</h1>
+        <p id="updated">Yükleniyor…</p>
+        <div id="list"></div>
+    </main>
+
+    <script>async function refresh() {
+      const response = await fetch("/status");
+      const data = await response.json();
+
+      document.getElementById("updated").textContent =
+        "Son kontrol: " + new Date(data.updatedAt).toLocaleString("tr-TR");
+
+      document.getElementById("list").innerHTML = data.results.map(result => {
+        let tone = "idle";
+
+        if (result.error || result.status >= 500) {
+          tone = "down";
+        } else if (result.status >= 400) {
+          tone = "warn";
+        } else {
+          tone = "up";
+        }
+
+        return `
+          <div class="row ${tone}">
+            <div>
+              <div class="url">${result.url}</div>
+              ${result.error
+                ? `<div class="error">${result.error}</div>`
+                : ""}
+            </div>
+            <div class="meta">
+              ${result.status ?? "—"} · ${result.ms} ms
+            </div>
+          </div>`;
+      }).join("");
+    }
+
+    refresh();
+    setInterval(refresh, 5000);</script>
+</body>
+</html>
