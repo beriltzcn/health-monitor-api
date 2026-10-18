@@ -56,10 +56,34 @@
         }
 
         .meta {
+            display: flex;
+            align-items: center;
+            gap: 12px;
             color: #cbd5e1;
             text-align: right;
             white-space: nowrap;
         }
+
+        .delete {
+            padding: 6px 10px;
+            border: 1px solid #7f1d1d;
+            border-radius: 6px;
+            background: transparent;
+            color: #fca5a5;
+            font: inherit;
+            font-size: 12px;
+            cursor: pointer;
+        }
+
+            .delete:hover {
+                background: #7f1d1d;
+                color: #ffffff;
+            }
+
+            .delete:disabled {
+                opacity: 0.5;
+                cursor: wait;
+            }
 
         .error {
             margin-top: 4px;
@@ -181,7 +205,12 @@
                 : ""}
             </div>
             <div class="meta">
-              ${result.status ?? "—"} · ${result.ms} ms
+              <span>${result.status ?? "—"} · ${result.ms} ms</span>
+              <button class="delete"
+                      type="button"
+                      data-url="${encodeURIComponent(result.url)}">
+                Sil
+              </button>
             </div>
           </div>`;
       }).join("");
@@ -224,6 +253,45 @@
       } finally {
         button.disabled = false;
         button.textContent = "Ekle";
+      }
+    });
+
+    document.getElementById("list").addEventListener("click", async event => {
+      const button = event.target.closest("button.delete");
+
+      if (!button) {
+        return;
+      }
+
+      const url = decodeURIComponent(button.dataset.url);
+
+      if (!confirm(`${url} adresi silinsin mi?`)) {
+        return;
+      }
+
+      button.disabled = true;
+      const message = document.getElementById("formMessage");
+
+      try {
+        const response = await fetch(
+          `/api/urls?url=${encodeURIComponent(url)}`,
+          { method: "DELETE" });
+
+        if (!response.ok) {
+          const data = await response.json().catch(() => ({}));
+          message.textContent = data.message || "URL silinemedi.";
+          message.className = "message error-text";
+          return;
+        }
+
+        message.textContent = "Silindi.";
+        message.className = "message success";
+        await refresh();
+      } catch {
+        message.textContent = "Sunucuya ulaşılamadı.";
+        message.className = "message error-text";
+      } finally {
+        button.disabled = false;
       }
     });
 

@@ -69,6 +69,40 @@ app.MapPost("/api/urls", (AddUrlRequest request) =>
     return Results.Created("/api/urls", new { url = normalized });
 });
 
+app.MapDelete("/api/urls", (string url) =>
+{
+    if (!TryNormalizeUrl(url, out var normalized))
+    {
+        return Results.BadRequest(new
+        {
+            message = "Geçerli bir http/https adresi girin."
+        });
+    }
+
+    lock (stateLock)
+    {
+        var removed = urls.RemoveAll(existing =>
+            string.Equals(existing, normalized, StringComparison.OrdinalIgnoreCase));
+
+        if (removed == 0)
+        {
+            return Results.NotFound(new
+            {
+                message = "Bu adres listede yok."
+            });
+        }
+
+        latestResults = latestResults
+            .Where(result =>
+                !string.Equals(result.Url, normalized, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        SaveUrls(dataFile, urls);
+    }
+
+    return Results.NoContent();
+});
+
 async Task<List<CheckResult>> CheckAllAsync()
 {
     string[] urlsToCheck;
