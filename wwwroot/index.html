@@ -51,6 +51,11 @@
                 border-color: #ef4444;
             }
 
+            .row.paused {
+                border-color: #64748b;
+                opacity: 0.72;
+            }
+
         .url {
             overflow-wrap: anywhere;
         }
@@ -83,6 +88,27 @@
             }
 
             .check:disabled {
+                opacity: 0.5;
+                cursor: wait;
+            }
+
+        .pause {
+            padding: 6px 10px;
+            border: 1px solid #92400e;
+            border-radius: 6px;
+            background: transparent;
+            color: #fbbf24;
+            font: inherit;
+            font-size: 12px;
+            cursor: pointer;
+        }
+
+            .pause:hover {
+                background: #92400e;
+                color: #ffffff;
+            }
+
+            .pause:disabled {
                 opacity: 0.5;
                 cursor: wait;
             }
@@ -213,6 +239,18 @@
       });
     }
 
+    function statusText(result) {
+      if (!result.enabled) {
+        return "Paused";
+      }
+
+      if (result.status == null) {
+        return "—";
+      }
+
+      return `${result.status} · ${result.ms ?? "—"} ms`;
+    }
+
     async function refresh() {
       const response = await fetch("/status");
       const data = await response.json();
@@ -223,11 +261,13 @@
       document.getElementById("list").innerHTML = data.results.map(result => {
         let tone = "idle";
 
-        if (result.error || result.status >= 500) {
+        if (!result.enabled) {
+          tone = "paused";
+        } else if (result.error || result.status >= 500) {
           tone = "down";
         } else if (result.status >= 400) {
           tone = "warn";
-        } else {
+        } else if (result.status != null) {
           tone = "up";
         }
 
@@ -240,14 +280,19 @@
                 : ""}
             </div>
             <div class="meta">
-              <span>
-                ${result.status ?? "—"} · ${result.ms} ms ·
-                ${formatTime(result.checkedAt)}
-              </span>
+              <span>${statusText(result)}${result.checkedAt
+                ? ` · ${formatTime(result.checkedAt)}`
+                : ""}</span>
               <button class="check"
                       type="button"
                       data-url="${encodeURIComponent(result.url)}">
                 Check now
+              </button>
+              <button class="pause"
+                      type="button"
+                      data-url="${encodeURIComponent(result.url)}"
+                      data-enabled="${result.enabled}">
+                ${result.enabled ? "Pause" : "Resume"}
               </button>
               <button class="delete"
                       type="button"
@@ -296,6 +341,44 @@
       } finally {
         button.disabled = false;
         button.textContent = "Add";
+      }
+    });
+
+    document.getElementById("list").addEventListener("click", async event => {
+      const button = event.target.closest("button.pause");
+
+      if (!button) {
+        return;
+      }
+
+      const url = decodeURIComponent(button.dataset.url);
+      const enabled = button.dataset.enabled === "true";
+      const message = document.getElementById("formMessage");
+
+      button.disabled = true;
+
+      try {
+        const response = await fetch("/api/urls/enabled", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url, enabled: !enabled })
+        });
+
+        if (!response.ok) {
+          const data = await response.json().catch(() => ({}));
+          message.textContent = data.message || "Could not update URL.";
+          message.className = "message error-text";
+          return;
+        }
+
+        message.textContent = enabled ? "URL paused." : "URL resumed.";
+        message.className = "message success";
+        await refresh();
+      } catch {
+        message.textContent = "Could not reach the server.";
+        message.className = "message error-text";
+      } finally {
+        button.disabled = false;
       }
     });
 

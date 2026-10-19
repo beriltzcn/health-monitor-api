@@ -29,10 +29,29 @@ app.MapGet("/status", () =>
 {
     lock (stateLock)
     {
+        var statuses = urls
+            .Select(item =>
+            {
+                var result = latestResults.LastOrDefault(existing =>
+                    string.Equals(
+                        existing.Url,
+                        item.Url,
+                        StringComparison.OrdinalIgnoreCase));
+
+                return new EndpointStatus(
+                    item.Url,
+                    item.Enabled,
+                    result?.Status,
+                    result?.Error,
+                    result?.Ms,
+                    result?.CheckedAt);
+            })
+            .ToList();
+
         return Results.Ok(new
         {
             updatedAt = lastUpdated,
-            results = latestResults
+            results = statuses
         });
     }
 });
@@ -57,8 +76,8 @@ app.MapPost("/api/urls", (AddUrlRequest request) =>
 
     lock (stateLock)
     {
-        if (urls.Any(url =>
-                string.Equals(url, normalized, StringComparison.OrdinalIgnoreCase)))
+        if (urls.Any(item =>
+                string.Equals(item.Url, normalized, StringComparison.OrdinalIgnoreCase)))
         {
             return Results.Conflict(new
             {
@@ -66,7 +85,7 @@ app.MapPost("/api/urls", (AddUrlRequest request) =>
             });
         }
 
-        urls.Add(normalized);
+        urls.Add(new MonitoredUrl(normalized, true));
         SaveUrls(dataFile, urls);
     }
 
@@ -86,7 +105,7 @@ app.MapDelete("/api/urls", (string url) =>
     lock (stateLock)
     {
         var removed = urls.RemoveAll(existing =>
-            TryNormalizeUrl(existing, out var normalizedExisting) &&
+            TryNormalizeUrl(existing.Url, out var normalizedExisting) &&
             string.Equals(
                 normalizedExisting,
                 normalized,
@@ -111,13 +130,46 @@ app.MapDelete("/api/urls", (string url) =>
     return Results.NoContent();
 });
 
+app.MapPut("/api/urls/enabled", (SetEnabledRequest request) =>
+{
+    if (!TryNormalizeUrl(request.Url, out var normalized))
+    {
+        return Results.BadRequest(new
+        {
+            message = "Enter a valid HTTP or HTTPS URL."
+        });
+    }
+
+    lock (stateLock)
+    {
+        var index = urls.FindIndex(item =>
+            string.Equals(item.Url, normalized, StringComparison.OrdinalIgnoreCase));
+
+        if (index < 0)
+        {
+            return Results.NotFound(new
+            {
+                message = "This URL is not in the list."
+            });
+        }
+
+        urls[index] = urls[index] with { Enabled = request.Enabled };
+        SaveUrls(dataFile, urls);
+    }
+
+    return Results.NoContent();
+});
+
 async Task<List<CheckResult>> CheckAllAsync()
 {
     string[] urlsToCheck;
 
     lock (stateLock)
     {
-        urlsToCheck = urls.ToArray();
+        urlsToCheck = urls
+            .Where(item => item.Enabled)
+            .Select(item => item.Url)
+            .ToArray();
     }
 
     var results = new List<CheckResult>();
@@ -129,7 +181,30 @@ async Task<List<CheckResult>> CheckAllAsync()
 
     lock (stateLock)
     {
-        latestResults = results;
+        foreach (var result in results)
+        {
+            if (!urls.Any(item =>
+                    string.Equals(item.Url, result.Url, StringComparison.OrdinalIgnoreCase)))
+            {
+                continue;
+            }
+
+            var index = latestResults.FindIndex(existing =>
+                string.Equals(
+                    existing.Url,
+                    result.Url,
+                    StringComparison.OrdinalIgnoreCase));
+
+            if (index >= 0)
+            {
+                latestResults[index] = result;
+            }
+            else
+            {
+                latestResults.Add(result);
+            }
+        }
+
         lastUpdated = DateTimeOffset.Now;
     }
 
@@ -161,8 +236,8 @@ void RememberResult(CheckResult result)
 {
     lock (stateLock)
     {
-        if (!urls.Any(url =>
-        string.Equals(url, result.Url, StringComparison.OrdinalIgnoreCase)))
+        if (!urls.Any(item =>
+                string.Equals(item.Url, result.Url, StringComparison.OrdinalIgnoreCase)))
         {
             return;
         }
@@ -229,49 +304,71 @@ static bool TryNormalizeUrl(string? value, out string normalized)
     return true;
 }
 
-static List<string> LoadUrls(string path)
+static List<MonitoredUrl> LoadUrls(string path)
 {
     if (!File.Exists(path))
     {
-        return new List<string>
+        return new List<MonitoredUrl>
         {
-            "https://example.com/",
-            "https://httpbin.org/status/500"
+            new("https://example.com/", true),
+            new("https://httpbin.org/status/500", true)
         };
     }
 
     try
     {
         var json = File.ReadAllText(path);
-        var loaded = JsonSerializer.Deserialize<List<string>>(json)
-                     ?? new List<string>();
+        using var document = JsonDocument.Parse(json);
+        var loaded = new List<MonitoredUrl>();
 
-        var normalizedUrls = new List<string>();
-
-        foreach (var url in loaded)
+        foreach (var element in document.RootElement.EnumerateArray())
         {
-            if (TryNormalizeUrl(url, out var normalized) &&
-                !normalizedUrls.Any(existing =>
+            string? rawUrl = null;
+            var enabled = true;
+
+            if (element.ValueKind == JsonValueKind.String)
+            {
+                rawUrl = element.GetString();
+            }
+            else if (element.ValueKind == JsonValueKind.Object)
+            {
+                if (element.TryGetProperty("url", out var urlElement) ||
+                    element.TryGetProperty("Url", out urlElement))
+                {
+                    rawUrl = urlElement.GetString();
+                }
+
+                if ((element.TryGetProperty("enabled", out var enabledElement) ||
+                     element.TryGetProperty("Enabled", out enabledElement)) &&
+                    (enabledElement.ValueKind == JsonValueKind.True ||
+                     enabledElement.ValueKind == JsonValueKind.False))
+                {
+                    enabled = enabledElement.GetBoolean();
+                }
+            }
+
+            if (TryNormalizeUrl(rawUrl, out var normalized) &&
+                !loaded.Any(existing =>
                     string.Equals(
-                        existing,
+                        existing.Url,
                         normalized,
                         StringComparison.OrdinalIgnoreCase)))
             {
-                normalizedUrls.Add(normalized);
+                loaded.Add(new MonitoredUrl(normalized, enabled));
             }
         }
 
-        return normalizedUrls;
+        return loaded;
     }
     catch
     {
-        return new List<string>();
+        return new List<MonitoredUrl>();
     }
 }
 
-static void SaveUrls(string path, List<string> urls)
+static void SaveUrls(string path, List<MonitoredUrl> urls)
 {
-    var json = JsonSerializer.Serialize(urls, new JsonSerializerOptions
+    var json = JsonSerializer.Serialize(urls, new JsonSerializerOptions(JsonSerializerDefaults.Web)
     {
         WriteIndented = true
     });
@@ -280,4 +377,13 @@ static void SaveUrls(string path, List<string> urls)
 }
 
 record AddUrlRequest(string Url);
+record SetEnabledRequest(string Url, bool Enabled);
+record MonitoredUrl(string Url, bool Enabled);
+record EndpointStatus(
+    string Url,
+    bool Enabled,
+    int? Status,
+    string? Error,
+    long? Ms,
+    DateTimeOffset? CheckedAt);
 record CheckResult(string Url, int? Status, string? Error, long Ms, DateTimeOffset CheckedAt);
