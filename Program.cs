@@ -16,7 +16,11 @@ var lastUpdated = DateTimeOffset.MinValue;
 var stateLock = new object();
 
 app.MapGet("/check", async (string url) =>
-    Results.Ok(await CheckUrl(http, url)));
+{
+    var result = await CheckUrl(http, url);
+    RememberResult(result);
+    return Results.Ok(result);
+});
 
 app.MapGet("/check-all", async () =>
     Results.Ok(await CheckAllAsync()));
@@ -149,6 +153,32 @@ _ = Task.Run(async () =>
     }
 });
 
+void RememberResult(CheckResult result)
+{
+    lock (stateLock)
+    {
+        if (!urls.Any(url =>
+        string.Equals(url, result.Url, StringComparison.OrdinalIgnoreCase)))
+        {
+            return;
+        }
+
+        var index = latestResults.FindIndex(existing =>
+            string.Equals(existing.Url, result.Url, StringComparison.OrdinalIgnoreCase));
+
+        if (index >= 0)
+        {
+            latestResults[index] = result;
+        }
+        else
+        {
+            latestResults.Add(result);
+        }
+
+        lastUpdated = DateTimeOffset.Now;
+    }
+}
+
 app.Run();
 
 static async Task<CheckResult> CheckUrl(HttpClient http, string url)
@@ -163,7 +193,8 @@ static async Task<CheckResult> CheckUrl(HttpClient http, string url)
             url,
             (int)response.StatusCode,
             null,
-            sw.ElapsedMilliseconds);
+            sw.ElapsedMilliseconds,
+            DateTimeOffset.UtcNow);
     }
     catch (Exception ex)
     {
@@ -171,7 +202,8 @@ static async Task<CheckResult> CheckUrl(HttpClient http, string url)
             url,
             null,
             ex.Message,
-            sw.ElapsedMilliseconds);
+            sw.ElapsedMilliseconds,
+            DateTimeOffset.UtcNow);
     }
 }
 
@@ -227,4 +259,4 @@ static void SaveUrls(string path, List<string> urls)
 }
 
 record AddUrlRequest(string Url);
-record CheckResult(string Url, int? Status, string? Error, long Ms);
+record CheckResult(string Url, int? Status, string? Error, long Ms, DateTimeOffset CheckedAt);
