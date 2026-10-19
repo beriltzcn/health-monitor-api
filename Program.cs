@@ -86,7 +86,11 @@ app.MapDelete("/api/urls", (string url) =>
     lock (stateLock)
     {
         var removed = urls.RemoveAll(existing =>
-            string.Equals(existing, normalized, StringComparison.OrdinalIgnoreCase));
+            TryNormalizeUrl(existing, out var normalizedExisting) &&
+            string.Equals(
+                normalizedExisting,
+                normalized,
+                StringComparison.OrdinalIgnoreCase));
 
         if (removed == 0)
         {
@@ -231,7 +235,7 @@ static List<string> LoadUrls(string path)
     {
         return new List<string>
         {
-            "https://example.com",
+            "https://example.com/",
             "https://httpbin.org/status/500"
         };
     }
@@ -239,8 +243,25 @@ static List<string> LoadUrls(string path)
     try
     {
         var json = File.ReadAllText(path);
-        return JsonSerializer.Deserialize<List<string>>(json)
-               ?? new List<string>();
+        var loaded = JsonSerializer.Deserialize<List<string>>(json)
+                     ?? new List<string>();
+
+        var normalizedUrls = new List<string>();
+
+        foreach (var url in loaded)
+        {
+            if (TryNormalizeUrl(url, out var normalized) &&
+                !normalizedUrls.Any(existing =>
+                    string.Equals(
+                        existing,
+                        normalized,
+                        StringComparison.OrdinalIgnoreCase)))
+            {
+                normalizedUrls.Add(normalized);
+            }
+        }
+
+        return normalizedUrls;
     }
     catch
     {
